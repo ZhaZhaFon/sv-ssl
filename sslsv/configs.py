@@ -6,12 +6,12 @@ from typing import Tuple
 class TrainingConfig:
     epochs: int = 500
     batch_size: int = 64
-    learning_rate: float = 0.1
+    learning_rate: float = 0.001
     patience: int = 50
     tracked_metric: str = 'test_eer'
     tracked_mode: str = 'min'
-    optimizer: str = 'sgd'
-    weight_reg: float = 1e-4
+    optimizer: str = 'adam'
+    weight_reg: float = 0
     mixed_precision: bool = False
 
 
