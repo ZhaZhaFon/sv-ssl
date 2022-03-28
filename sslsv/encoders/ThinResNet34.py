@@ -186,8 +186,3 @@ class ThinResNet34(nn.Module):
         Z = self.fc(Z)
 
         return Z
-
-from torchsummary import summary
-if __name__ == '__main__':
-    encoder = ThinResNet34()
-    summary(encoder, input_size=(32000,))
