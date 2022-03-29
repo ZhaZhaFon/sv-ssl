@@ -43,17 +43,9 @@ class Trainer:
         self.last_progress = 0
 
         for i, (x, y) in enumerate(self.train_dataloader):
-            x = x.to(self.device)
-            y = y.to(self.device)
-
-            x_1 = x[:, 0, :]
-            x_2 = x[:, 1, :]
-
-            with autocast(enabled=(self.scaler is not None)):
-                z_1 = self.model(x_1, training=True)
-                z_2 = self.model(x_2, training=True)
-                loss, metrics = self.model.module.compute_loss(z_1, z_2)
-
+            
+            loss, metrics = self.model.module.get_step_loss(x, y, self.model, self.scaler, self.device)
+                        
             # Update metrics (average for epoch)
             if not train_metrics:
                 train_metrics = {name:0 for name in metrics.keys()}
