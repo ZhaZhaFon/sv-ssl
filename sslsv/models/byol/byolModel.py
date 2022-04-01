@@ -54,11 +54,6 @@ class byolModel(nn.Module):
 
         self.beta = config.beta
     
-    def compute_loss(self, onl_pred, tar_proj):
-        x = F.normalize(onl_pred, dim=-1, p=2)
-        y = F.normalize(tar_proj, dim=-1, p=2)
-        return 2 - 2 * (x * y).sum(dim=-1)        
-
     def forward(self, img1, img2):
         # online network
         onl_repr_img1 = self.online_encoder(img1)
@@ -77,12 +72,9 @@ class byolModel(nn.Module):
         
             tar_proj_img1 = self.target_projector(tar_repr_img1)
             tar_proj_img2 = self.target_projector(tar_repr_img2)
-        
-        loss1 = self.compute_loss(onl_pred_img1, tar_proj_img1)
-        loss2 = self.compute_loss(onl_pred_img2, tar_proj_img2)
-        
-        return (loss1 + loss2).mean()
 
+        return (onl_pred_img1, tar_proj_img1), (onl_pred_img2, tar_proj_img2)
+        
     # exponential moving average
     def update_target_network(self):
         for tar_params_enc, onl_params_enc in zip(self.target_encoder.parameters(), self.online_encoder.parameters()):
@@ -90,6 +82,35 @@ class byolModel(nn.Module):
 
         for tar_params_proj, onl_params_proj in zip(self.target_projector.parameters(), self.online_projector.parameters()):
             tar_params_proj.data = self.beta * tar_params_proj.data + (1 - self.beta) * onl_params_proj.data
+
+    def compute_accuracy(self, online, target):
+        N = online.size()[0]
+        dot = F.normalize(online, p=2, dim=1) @ F.normalize(target, p=2, dim=1).T
+        dot = dot / 0.07
+        labels = torch.arange(N, device=online.device)
+
+        pred_indices = torch.argmax(F.softmax(dot, dim=1), dim=1)
+        preds_acc = torch.eq(pred_indices, labels)
+        accuracy = torch.count_nonzero(preds_acc) / N
+
+        return accuracy
+
+    def get_accuracy(self, Z1, Z2):
+        accuracy = self.compute_accuracy(Z1[0], Z1[1])
+        accuracy += self.compute_accuracy(Z2[0], Z2[1])
+        
+        return accuracy / 2
+
+    def compute_loss(self, online, target):
+        x = F.normalize(online, dim=-1, p=2)
+        y = F.normalize(target, dim=-1, p=2)
+        return 2 - 2 * (x * y).sum(dim=-1)        
+
+    def get_loss(self, Z1, Z2):
+        loss1 = self.compute_loss(Z1[0], Z1[1])
+        loss2 = self.compute_loss(Z2[0], Z2[1])
+        
+        return (loss1 + loss2).mean()
 
     def get_step_loss(self, x, y, model, scaler, device):
         x = x.to(device)
@@ -99,6 +120,8 @@ class byolModel(nn.Module):
         x_2 = x[:, 1, :]
 
         with autocast(enabled=(scaler is not None)):
-            loss = model(x_1, x_2)
+            Z1, Z2 = model(x_1, x_2)
+            loss = self.get_loss(Z1, Z2)
+            accuracy = self.get_accuracy(Z1, Z2)
         
-        return loss, TODO_metrics
+        return loss, accuracy
