@@ -1,0 +1,104 @@
+import torch
+from torch import nn
+import torch.nn.functional as F
+
+from torch.optim import SGD
+from torch.optim.lr_scheduler import StepLR
+#from torchlars import LARS
+
+from sslsv.encoders.ThinResNet34 import ThinResNet34
+
+from torch.cuda.amp import autocast
+
+import copy
+
+class MLP(nn.Module):
+
+    def __init__(self, dim_in, dim_out):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim_in, 4096),
+            nn.BatchNorm1d(4096),
+            nn.ReLU(),
+            nn.Linear(4096, dim_out)
+        )
+    def forward(self, X):
+        return self.net(X)
+
+class byolModel(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+              
+        self.mlp_dim = config.mlp_dim
+
+        self.online_encoder = ThinResNet34(encoded_dim=2048)
+        self.target_encoder = copy.deepcopy(self.online_encoder)
+        
+        self.online_projector = MLP(self.mlp_dim, 256)
+        self.target_projector = MLP(self.mlp_dim, 256)
+        
+        self.predictor = MLP(256, 256)
+
+        """
+        base_optimizer = SGD(list(self.online_encoder.parameters()) + 
+                             list(self.online_projector.parameters()) + 
+                             list(self.predictor.parameters()), 
+                             lr=config.training.learning_rate,
+                             weight_decay=config.training.weight_reg,
+                             momentum=0.9)
+                             """
+        #self.optimizer = LARS(optimizer=base_optimizer, eps=1e-8, trust_coef=0.001)
+        # self.optimizer = base_optimizer
+
+        # self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.95)
+
+        self.beta = config.beta
+    
+    def compute_loss(self, onl_pred, tar_proj):
+        x = F.normalize(onl_pred, dim=-1, p=2)
+        y = F.normalize(tar_proj, dim=-1, p=2)
+        return 2 - 2 * (x * y).sum(dim=-1)        
+
+    def forward(self, img1, img2):
+        # online network
+        onl_repr_img1 = self.online_encoder(img1)
+        onl_repr_img2 = self.online_encoder(img2)
+        
+        onl_proj_img1 = self.online_projector(onl_repr_img1)
+        onl_proj_img2 = self.online_projector(onl_repr_img2)
+        
+        onl_pred_img1 = self.predictor(onl_proj_img1)
+        onl_pred_img2 = self.predictor(onl_proj_img2)
+
+        # target network
+        with torch.no_grad(): # do not calculate gradients --> no backprop on target network
+            tar_repr_img1 = self.target_encoder(img1)
+            tar_repr_img2 = self.target_encoder(img2)
+        
+            tar_proj_img1 = self.target_projector(tar_repr_img1)
+            tar_proj_img2 = self.target_projector(tar_repr_img2)
+        
+        loss1 = self.compute_loss(onl_pred_img1, tar_proj_img1)
+        loss2 = self.compute_loss(onl_pred_img2, tar_proj_img2)
+        
+        return (loss1 + loss2).mean()
+
+    # exponential moving average
+    def update_target_network(self):
+        for tar_params_enc, onl_params_enc in zip(self.target_encoder.parameters(), self.online_encoder.parameters()):
+            tar_params_enc.data = self.beta * tar_params_enc.data + (1 - self.beta) * onl_params_enc.data
+
+        for tar_params_proj, onl_params_proj in zip(self.target_projector.parameters(), self.online_projector.parameters()):
+            tar_params_proj.data = self.beta * tar_params_proj.data + (1 - self.beta) * onl_params_proj.data
+
+    def get_step_loss(self, x, y, model, scaler, device):
+        x = x.to(device)
+        y = y.to(device)
+
+        x_1 = x[:, 0, :]
+        x_2 = x[:, 1, :]
+
+        with autocast(enabled=(scaler is not None)):
+            loss = model(x_1, x_2)
+        
+        return loss, TODO_metrics

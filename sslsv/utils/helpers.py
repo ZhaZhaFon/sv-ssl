@@ -18,10 +18,12 @@ from sslsv.data.SupervisedSampler import SupervisedSampler
 from sslsv.utils.distributed import is_main_process
 
 from sslsv.models.simclr import SimCLRModel, SimCLRConfig
+from sslsv.models.byol import byolModel, byolConfig
 
 
 REGISTERED_MODELS = {
-    'simclr': (SimCLRModel, SimCLRConfig)
+    'simclr': (SimCLRModel, SimCLRConfig),
+    'byol': (byolModel.byolModel, byolConfig.byolConfig)
 }
 
 
@@ -31,7 +33,6 @@ def get_sub_config(data, key, registered_dict):
         raise (
             Exception('{} `{}` not supported'.format(key.capitalize(), type_))
         )
-
     res = from_dict(registered_dict[type_][1], data[key])
     res.__type__ = data[key]['type']
     return res

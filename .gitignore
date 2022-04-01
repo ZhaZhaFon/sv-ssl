@@ -7,3 +7,5 @@ data
 !sslsv/data/
 
 .env
+.vscode
+my_env
