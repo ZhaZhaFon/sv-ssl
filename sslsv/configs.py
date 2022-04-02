@@ -36,6 +36,8 @@ class DataConfig:
     enable_cache: bool = False
     num_workers: int = 8
     pin_memory: bool = False
+    enable_MC_2x2: bool = False
+    enable_MC_4x: bool = False
 
 
 @dataclass

@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 
 from sslsv.configs import Config
 from sslsv.data.AudioDataset import AudioDataset
+from sslsv.data.AudioDatasetMC_2x2 import AudioDatasetMC_2x2
 from sslsv.data.SupervisedSampler import SupervisedSampler
 from sslsv.utils.distributed import is_main_process
 
@@ -79,7 +80,10 @@ def seed_dataloader_worker(worker_id):
 
 
 def load_dataloader(config, nb_labels_per_spk=None):
-    train_dataset = AudioDataset(config.data)
+    if config.data.enable_MC_2x2:
+        train_dataset = AudioDatasetMC_2x2(config.data)
+    else:
+        train_dataset = AudioDataset(config.data)
     shuffle = True
     batch_size = config.training.batch_size
     sampler = None
