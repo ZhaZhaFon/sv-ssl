@@ -10,9 +10,7 @@ from sslsv.losses.BarlowTwins import BarlowTwins
 
 from torch.cuda.amp import autocast
 
-
-class Model(nn.Module):
-
+class BaseModel(nn.Module):
     def __init__(self, config):
         super().__init__()
 
@@ -33,6 +31,7 @@ class Model(nn.Module):
         self.barlowtwins = BarlowTwins(
             config.barlowtwins_lambda
         )
+        self.encoder = ThinResNet34()
         
     def forward(self, X, training=False):
         Y = self.encoder(X)

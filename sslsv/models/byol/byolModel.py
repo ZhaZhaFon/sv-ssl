@@ -112,6 +112,13 @@ class byolModel(nn.Module):
         
         return (loss1 + loss2).mean()
 
+    def get_metrics(self, loss, accuracy):
+        metrics = {}
+        metrics['train_loss'] = loss
+        metrics['train_accuracy'] = accuracy
+        
+        return metrics
+
     def get_step_loss(self, x, y, model, scaler, device):
         x = x.to(device)
         y = y.to(device)
@@ -124,4 +131,5 @@ class byolModel(nn.Module):
             loss = self.get_loss(Z1, Z2)
             accuracy = self.get_accuracy(Z1, Z2)
         
-        return loss, accuracy
+        metrics = self.get_metrics(loss, accuracy)
+        return loss, metrics

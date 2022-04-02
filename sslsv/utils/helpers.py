@@ -19,11 +19,13 @@ from sslsv.utils.distributed import is_main_process
 
 from sslsv.models.simclr import SimCLRModel, SimCLRConfig
 from sslsv.models.byol import byolModel, byolConfig
+from sslsv.models.vibcreg import VIbCRegModel
 
 
 REGISTERED_MODELS = {
     'simclr': (SimCLRModel, SimCLRConfig),
-    'byol': (byolModel.byolModel, byolConfig.byolConfig)
+    'vibcreg': (VIbCRegModel, SimCLRConfig),
+    'byol': (byolModel, byolConfig)
 }
 
 
