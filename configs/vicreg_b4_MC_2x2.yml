@@ -1,5 +1,5 @@
 model:
-  type: 'simclr'
+  type: 'simclrMC_2x2'
   infonce_weight: 0.0
   vicreg_weight: 1.0
   barlowtwins_weight: 0.0
@@ -9,4 +9,3 @@ data:
   train: './data/voxceleb1_train_list'
   wav_augment:
     enable: true
-  enable_MC_2x2: true

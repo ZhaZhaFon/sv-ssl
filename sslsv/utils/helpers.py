@@ -15,10 +15,12 @@ from torch.utils.data import DataLoader
 from sslsv.configs import Config
 from sslsv.data.AudioDataset import AudioDataset
 from sslsv.data.AudioDatasetMC_2x2 import AudioDatasetMC_2x2
+from sslsv.data.AudioDatasetMC_4x import AudioDatasetMC_4x
 from sslsv.data.SupervisedSampler import SupervisedSampler
 from sslsv.utils.distributed import is_main_process
 
 from sslsv.models.simclr import SimCLRModel, SimCLRConfig
+from sslsv.models.simclrMC import SimCLRModelMC_2x2
 from sslsv.models.byol import byolModel, byolConfig
 from sslsv.models.vibcreg import VIbCRegModel
 
@@ -26,7 +28,8 @@ from sslsv.models.vibcreg import VIbCRegModel
 REGISTERED_MODELS = {
     'simclr': (SimCLRModel, SimCLRConfig),
     'vibcreg': (VIbCRegModel, SimCLRConfig),
-    'byol': (byolModel, byolConfig)
+    'byol': (byolModel, byolConfig),
+    'simclrMC_2x2': (SimCLRModelMC_2x2, SimCLRConfig)
 }
 
 
@@ -80,8 +83,10 @@ def seed_dataloader_worker(worker_id):
 
 
 def load_dataloader(config, nb_labels_per_spk=None):
-    if config.data.enable_MC_2x2:
+    if config.model.__type__ == "simclrMC_2x2":
         train_dataset = AudioDatasetMC_2x2(config.data)
+    elif config.model.__type__ == "simclrMC_4x":
+        train_dataset = AudioDatasetMC_4x(config.data)
     else:
         train_dataset = AudioDataset(config.data)
     shuffle = True

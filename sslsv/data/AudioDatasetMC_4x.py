@@ -5,14 +5,11 @@ from sslsv.data.AudioDataset import AudioDataset
 
 class AudioDatasetMC_4x(AudioDataset):
 
-    def __init__(self, config, base_path):
-        super().__init__(config, base_path)
+    def __init__(self, config):
+        super().__init__(config)
 
-    def sample_frames(audio, frame_length):
-
-        # TODO 4x1
-        
-        """
+    def sample_frames(self, audio, frame_length):
+        #TODO
         audio_length = audio.shape[1]
         assert audio_length >= 2 * frame_length, \
             "audio_length should >= 2 * frame_length"
@@ -33,4 +30,3 @@ class AudioDatasetMC_4x(AudioDataset):
         frame2 = audio[:, frame2_from:frame2_to]
 
         return frame1, frame2
-        """
