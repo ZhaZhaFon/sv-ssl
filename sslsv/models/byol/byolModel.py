@@ -34,6 +34,9 @@ class byolModel(nn.Module):
         self.online_encoder = ThinResNet34(encoded_dim=2048)
         self.target_encoder = copy.deepcopy(self.online_encoder)
         
+        for p in self.target_encoder.parameters():
+            p.requires_grad = False
+
         self.online_projector = MLP(self.mlp_dim, 256)
         self.target_projector = MLP(self.mlp_dim, 256)
         
@@ -53,8 +56,15 @@ class byolModel(nn.Module):
         # self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.95)
 
         self.beta = config.beta
-    
-    def forward(self, img1, img2):
+        # TODO: increase beta towards 1 during training
+
+    def forward(self, img1, img2=None, training=False):
+        #At the end of training, everything but the online encoder is discarded
+        if not training: return self.online_encoder(img1)
+
+        assert img2 is not None,\
+            "need 2 inputs for forward when training"
+
         # online network
         onl_repr_img1 = self.online_encoder(img1)
         onl_repr_img2 = self.online_encoder(img2)
@@ -67,14 +77,18 @@ class byolModel(nn.Module):
 
         # target network
         with torch.no_grad(): # do not calculate gradients --> no backprop on target network
+            self.update_target_network()
             tar_repr_img1 = self.target_encoder(img1)
             tar_repr_img2 = self.target_encoder(img2)
         
             tar_proj_img1 = self.target_projector(tar_repr_img1)
             tar_proj_img2 = self.target_projector(tar_repr_img2)
 
+            tar_proj_img1.detach()
+            tar_proj_img2.detach()
+
         return (onl_pred_img1, tar_proj_img1), (onl_pred_img2, tar_proj_img2)
-        
+    
     # exponential moving average
     def update_target_network(self):
         for tar_params_enc, onl_params_enc in zip(self.target_encoder.parameters(), self.online_encoder.parameters()):
@@ -110,7 +124,9 @@ class byolModel(nn.Module):
         loss1 = self.compute_loss(Z1[0], Z1[1])
         loss2 = self.compute_loss(Z2[0], Z2[1])
         
-        return (loss1 + loss2).mean()
+        # return (loss1 + loss2).mean()
+        # return loss1.mean()
+        return loss1.mean() + loss2.mean()
 
     def get_metrics(self, loss, accuracy):
         metrics = {}
@@ -119,7 +135,7 @@ class byolModel(nn.Module):
         
         return metrics
 
-    def get_step_loss(self, data, model, scaler, device):
+    def get_step_loss(self, data, scaler, model, device):
         x, y = data
         x = x.to(device)
         y = y.to(device)
@@ -128,9 +144,11 @@ class byolModel(nn.Module):
         x_2 = x[:, 1, :]
 
         with autocast(enabled=(scaler is not None)):
-            Z1, Z2 = model(x_1, x_2)
+            Z1, Z2 = model(x_1, x_2, training = True)
             loss = self.get_loss(Z1, Z2)
             accuracy = self.get_accuracy(Z1, Z2)
-        
-        metrics = self.get_metrics(loss, accuracy)
+            metrics = self.get_metrics(loss, accuracy)
+
+        print(metrics)
+
         return loss, metrics
