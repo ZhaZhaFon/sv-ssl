@@ -42,10 +42,11 @@ class Trainer:
         train_metrics = {}
         self.last_progress = 0
 
-        for i, (x, y) in enumerate(self.train_dataloader):
+        for i, data in enumerate(self.train_dataloader):
             
-            loss, metrics = self.model.module.get_step_loss(x, y, self.model, self.scaler, self.device)
-                        
+            loss, metrics = self.model.module.get_step_loss(data, self.scaler, self.model, self.device)
+            #loss, metrics = self.model.get_step_loss(data, self.model, self.scaler, self.device)
+
             # Update metrics (average for epoch)
             if not train_metrics:
                 train_metrics = {name:0 for name in metrics.keys()}
@@ -62,6 +63,8 @@ class Trainer:
                 self.optimizer.step()
 
             if is_main_process(): self.print_progress_bar(i)
+
+        print("\nloss: ", loss)
 
         if is_main_process(): print()
 
@@ -208,6 +211,7 @@ class Trainer:
                 'epoch': self.epoch + 1,
                 'best_metric': self.best_metric,
                 'model': self.model.module.state_dict(),
+                #'model': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
                 'lr_scheduler': self.lr_scheduler.state_dict()
             },
