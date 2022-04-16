@@ -85,7 +85,7 @@ class BaseModel(nn.Module):
 
         return loss, metrics
 
-    def get_step_loss(self, data, model, scaler, device):
+    def get_step_loss(self, data, scaler, model, device):
         x, y = data
         x = x.to(device)
         y = y.to(device)
@@ -97,6 +97,8 @@ class BaseModel(nn.Module):
             z_1 = model(x_1, training=True)
             z_2 = model(x_2, training=True)
             loss, metrics = self.compute_loss(z_1, z_2)
+
+        print(metrics)
         
         return loss, metrics
 

@@ -7,96 +7,44 @@ from torch.optim.lr_scheduler import StepLR
 #from torchlars import LARS
 
 from sslsv.encoders.ThinResNet34 import ThinResNet34
+from sslsv.losses.InfoNCE import InfoNCE
+from sslsv.models.byol.onlineNetwork import onlineNetwork
+from sslsv.models.byol.targetNetwork import targetNetwork
 
 from torch.cuda.amp import autocast
 
 import copy
 
-class MLP(nn.Module):
-
-    def __init__(self, dim_in, dim_out):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dim_in, 4096),
-            nn.BatchNorm1d(4096),
-            nn.ReLU(),
-            nn.Linear(4096, dim_out)
-        )
-    def forward(self, X):
-        return self.net(X)
-
 class byolModel(nn.Module):
+    
     def __init__(self, config):
         super().__init__()
-              
-        self.mlp_dim = config.mlp_dim
-
-        self.online_encoder = ThinResNet34(encoded_dim=2048)
-        self.target_encoder = copy.deepcopy(self.online_encoder)
         
-        for p in self.target_encoder.parameters():
-            p.requires_grad = False
-
-        self.online_projector = MLP(self.mlp_dim, 256)
-        self.target_projector = MLP(self.mlp_dim, 256)
+        self.encoded_dim = 2048
         
-        self.predictor = MLP(256, 256)
+        self.online = onlineNetwork(config.mlp_dim, self.encoded_dim)
+        self.target = targetNetwork(self.online, config.mlp_dim, self.encoded_dim)
 
-        """
-        base_optimizer = SGD(list(self.online_encoder.parameters()) + 
-                             list(self.online_projector.parameters()) + 
-                             list(self.predictor.parameters()), 
-                             lr=config.training.learning_rate,
-                             weight_decay=config.training.weight_reg,
-                             momentum=0.9)
-                             """
-        #self.optimizer = LARS(optimizer=base_optimizer, eps=1e-8, trust_coef=0.001)
-        # self.optimizer = base_optimizer
-
-        # self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.95)
+        self.InfoNCE = InfoNCE()
 
         self.beta = config.beta
+
         # TODO: increase beta towards 1 during training
+        # LR scheduler
+        # LARS optimizer
 
     def forward(self, img1, img2=None, training=False):
-        #At the end of training, everything but the online encoder is discarded
-        if not training: return self.online_encoder(img1)
+        # At the end of training, everything but the online encoder is discarded
+        if not training: return self.online.encoder(img1)
 
         assert img2 is not None,\
             "need 2 inputs for forward when training"
 
-        # online network
-        onl_repr_img1 = self.online_encoder(img1)
-        onl_repr_img2 = self.online_encoder(img2)
+        online_pred = self.online(img1)
+        target_proj = self.target(img2)
         
-        onl_proj_img1 = self.online_projector(onl_repr_img1)
-        onl_proj_img2 = self.online_projector(onl_repr_img2)
+        return online_pred, target_proj
         
-        onl_pred_img1 = self.predictor(onl_proj_img1)
-        onl_pred_img2 = self.predictor(onl_proj_img2)
-
-        # target network
-        with torch.no_grad(): # do not calculate gradients --> no backprop on target network
-            self.update_target_network()
-            tar_repr_img1 = self.target_encoder(img1)
-            tar_repr_img2 = self.target_encoder(img2)
-        
-            tar_proj_img1 = self.target_projector(tar_repr_img1)
-            tar_proj_img2 = self.target_projector(tar_repr_img2)
-
-            tar_proj_img1.detach()
-            tar_proj_img2.detach()
-
-        return (onl_pred_img1, tar_proj_img1), (onl_pred_img2, tar_proj_img2)
-    
-    # exponential moving average
-    def update_target_network(self):
-        for tar_params_enc, onl_params_enc in zip(self.target_encoder.parameters(), self.online_encoder.parameters()):
-            tar_params_enc.data = self.beta * tar_params_enc.data + (1 - self.beta) * onl_params_enc.data
-
-        for tar_params_proj, onl_params_proj in zip(self.target_projector.parameters(), self.online_projector.parameters()):
-            tar_params_proj.data = self.beta * tar_params_proj.data + (1 - self.beta) * onl_params_proj.data
-
     def compute_accuracy(self, online, target):
         N = online.size()[0]
         dot = F.normalize(online, p=2, dim=1) @ F.normalize(target, p=2, dim=1).T
@@ -124,9 +72,7 @@ class byolModel(nn.Module):
         loss1 = self.compute_loss(Z1[0], Z1[1])
         loss2 = self.compute_loss(Z2[0], Z2[1])
         
-        # return (loss1 + loss2).mean()
-        # return loss1.mean()
-        return loss1.mean() + loss2.mean()
+        return (loss1 + loss2).mean()
 
     def get_metrics(self, loss, accuracy):
         metrics = {}
@@ -144,11 +90,19 @@ class byolModel(nn.Module):
         x_2 = x[:, 1, :]
 
         with autocast(enabled=(scaler is not None)):
+            """
             Z1, Z2 = model(x_1, x_2, training = True)
             loss = self.get_loss(Z1, Z2)
             accuracy = self.get_accuracy(Z1, Z2)
+            """
+            Z = model(x_1, x_2, training=True)
+            loss, accuracy = self.InfoNCE((Z[0], Z[1]))
+
             metrics = self.get_metrics(loss, accuracy)
 
-        print(metrics)
+        # print(metrics)
+
+        # Update target network
+        self.target.EMA_update(self.online, self.beta)
 
         return loss, metrics
